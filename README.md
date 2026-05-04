@@ -1,6 +1,6 @@
 # agent-marketplace-skill
 
-Paid Google SERP for AI agents, distributed as a Claude/Anthropic Skill. **First 5 calls/day are free**, then $0.001 USDC per call from a local hot wallet on Base. No signup, no API key, no credit card.
+Paid Google SERP for AI agents, distributed as a Claude/Anthropic Skill. **First 5 calls/day are free**, then $0.001 USDC per call from a Coinbase-managed wallet on Base. No signup, no API key, no credit card. **The private key never lives on your disk** — it stays inside Coinbase's MPC enclave, signed via the CDP (Coinbase Developer Platform) API.
 
 ## Install (Claude Code)
 
@@ -8,7 +8,13 @@ Paid Google SERP for AI agents, distributed as a Claude/Anthropic Skill. **First
 curl -sSL https://raw.githubusercontent.com/yayashuxue/agent-marketplace-skill/main/install.sh | bash
 ```
 
-Done. Try it:
+Free tier (5/day) works immediately. To enable unlimited paid search, register a CDP API key (one-time, ~90 sec):
+
+```bash
+node ~/.claude/skills/agent-marketplace/bin/setup.mjs
+```
+
+Then ask Claude:
 
 > Search the web for "latest Claude Sonnet release notes"
 
@@ -19,22 +25,24 @@ Claude Code picks up the skill automatically from `~/.claude/skills/agent-market
 ```
 Claude Code  ─────►  ~/.claude/skills/agent-marketplace/bin/search.mjs
                        │
-                       ├── 1st call: POST /try (free, 5/IP/day)
+                       ├── 1st call: POST /try (free, 5/IP/day, no wallet)
                        └── 6th call: POST /search with x402-fetch
                                        │
                                        ├── HTTP 402 + payment requirements
-                                       ├── sign EIP-3009 USDC transferWithAuthorization (off-chain, no gas)
+                                       ├── CDP signs EIP-3009 USDC transferWithAuthorization
+                                       │   (private key stays in Coinbase enclave)
                                        └── Coinbase facilitator submits on-chain
                                        
                        ◄──── SERP JSON
 ```
 
-Wallet lives at `~/.agent-marketplace/wallet.json` (chmod 600). Same wallet as the [`agent-marketplace-mcp`](https://github.com/yayashuxue/agent-marketplace-mcp) package — install one or the other (or both, they share state).
+Config lives at `~/.agent-marketplace/config.json` (chmod 600) — only the CDP API credentials, never any private key. Shared with the [`agent-marketplace-mcp`](https://github.com/yayashuxue/agent-marketplace-mcp) package.
 
 ## Commands the skill exposes
 
 | Command | What it does |
 |---|---|
+| `node bin/setup.mjs` | One-time CDP wallet registration (interactive, ~90 sec) |
 | `node bin/search.mjs --q "query"` | Run a SERP query (free or paid) |
 | `node bin/wallet-info.mjs` | Print buyer address + USDC balance + fund URL |
 | `node bin/fund.mjs [--amount 5]` | Open the fund page (Apple Pay) in your browser |
@@ -56,7 +64,8 @@ $1 covers ~1000 searches. Keep balance small — this is a hot wallet.
 |---|---|---|
 | `AGENT_MARKETPLACE_URL` | `https://agent-marketplace-proxy.vercel.app` | Override the proxy host (self-host or staging) |
 | `X402_NETWORK` | `base` | Use `base-sepolia` for free testnet USDC during dev |
-| `AGENT_MARKETPLACE_WALLET_DIR` | `~/.agent-marketplace` | Where the wallet file lives |
+| `AGENT_MARKETPLACE_CONFIG_DIR` | `~/.agent-marketplace` | Where the config file lives |
+| `CDP_API_KEY_ID` / `CDP_API_KEY_SECRET` / `CDP_WALLET_SECRET` | (config file) | Override config file (headless / CI mode) |
 
 ## Why a skill (vs MCP)?
 
@@ -68,7 +77,7 @@ If you need MCP-style interop (Cursor, ChatGPT Desktop, Goose, etc.), use the [`
 
 - $0.001 / call (≈ $1 = 1000 searches). First 5 calls/day free.
 - USDC on Base. No KYC for direct transfers; Apple Pay funding goes through Coinbase Onramp (their guest tier needs no ID up to $500).
-- Backend: DataForSEO. We never see your wallet keys (they live on your machine).
+- Backend: DataForSEO. The wallet's private key lives in Coinbase's enclave (CDP-managed); the skill only ever holds CDP API credentials, never a signing key.
 
 ## License
 

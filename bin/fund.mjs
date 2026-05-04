@@ -3,7 +3,7 @@
 
 import { spawn } from "node:child_process";
 import { platform } from "node:os";
-import { PROXY_URL, getAccount } from "./_wallet.mjs";
+import { PROXY_URL, getAccount, SetupRequiredError } from "./_wallet.mjs";
 
 function parseAmount(argv) {
   const i = argv.indexOf("--amount");
@@ -11,7 +11,17 @@ function parseAmount(argv) {
   return "5";
 }
 
-const { account } = getAccount();
+let account;
+try {
+  account = await getAccount();
+} catch (e) {
+  if (e instanceof SetupRequiredError) {
+    process.stderr.write(`${e.message}\n`);
+    process.exit(2);
+  }
+  throw e;
+}
+
 const amount = parseAmount(process.argv.slice(2));
 const url = `${PROXY_URL}/fund?addr=${account.address}&amount=${amount}`;
 

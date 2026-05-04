@@ -35,11 +35,14 @@ else
 fi
 
 echo "→ Installing dependencies"
-(cd "${SKILL_DIR}" && npm install --silent --omit=dev --omit=optional)
+(cd "${SKILL_DIR}" && npm install --silent --omit=dev)
 
 echo ""
-echo "✓ Installed. Try it from any Claude Code session:"
-echo "    > Search the web for 'latest GPT-5 release'"
+echo "✓ Installed."
 echo ""
-echo "Wallet status:"
-node "${SKILL_DIR}/bin/wallet-info.mjs"
+echo "Free tier (5 calls/day, no wallet) works immediately. To enable unlimited"
+echo "paid search, register a Coinbase Developer Platform API key (90 sec):"
+echo ""
+echo "    node ${SKILL_DIR}/bin/setup.mjs"
+echo ""
+echo "After setup, the buyer wallet lives in Coinbase's enclave — no private key on your disk."

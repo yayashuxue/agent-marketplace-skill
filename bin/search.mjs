@@ -1,10 +1,17 @@
 #!/usr/bin/env node
 // search.mjs — paid Google SERP via x402.
-// Usage: node search.mjs --q "query" [--num 10] [--location "United States"]
-// Falls back to /try (free, 5/IP/day) if no wallet OR if --free flag is set.
+// Usage: node search.mjs --q "query" [--num 10] [--location "United States"] [--free]
+// Free tier (5/IP/day) is tried first; paid path requires `setup.mjs` to have configured CDP.
 
 import { wrapFetchWithPayment } from "x402-fetch";
-import { PROXY_URL, NETWORK, getWalletClient, usdcBalance } from "./_wallet.mjs";
+import {
+  PROXY_URL,
+  NETWORK,
+  getWalletClient,
+  getAccount,
+  usdcBalance,
+  SetupRequiredError,
+} from "./_wallet.mjs";
 
 function parseArgs(argv) {
   const args = { q: null, num: 10, location: "United States", free: false };
@@ -15,7 +22,9 @@ function parseArgs(argv) {
     else if (a === "--location") args.location = argv[++i];
     else if (a === "--free") args.free = true;
     else if (a === "--help" || a === "-h") {
-      console.error("Usage: search.mjs --q \"query\" [--num 10] [--location \"United States\"] [--free]");
+      process.stderr.write(
+        "Usage: search.mjs --q \"query\" [--num 10] [--location \"United States\"] [--free]\n",
+      );
       process.exit(0);
     }
   }
@@ -32,7 +41,7 @@ async function callFree({ q, location, num }) {
 }
 
 async function callPaid({ q, location, num }) {
-  const { client, account } = getWalletClient();
+  const { client, account } = await getWalletClient();
   const fetchWithPay = wrapFetchWithPayment(fetch, client);
   const r = await fetchWithPay(`${PROXY_URL}/search`, {
     method: "POST",
@@ -45,17 +54,16 @@ async function callPaid({ q, location, num }) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!args.q) {
-    console.error("error: --q is required");
+    process.stderr.write("error: --q is required\n");
     process.exit(2);
   }
 
-  // Try free tier first — saves a wallet roundtrip if the user is under the daily limit.
+  // Try free tier first — saves a CDP roundtrip if the user is under the daily limit.
   const free = await callFree(args);
   if (free.status === 200) {
     process.stdout.write(free.text);
     return;
   }
-  // 429 = trial limit reached; anything else (5xx etc.) bail to paid path too.
   if (args.free) {
     process.stderr.write(`free tier exhausted (HTTP ${free.status}): ${free.text}\n`);
     process.exit(free.status);
@@ -66,12 +74,18 @@ async function main() {
   try {
     paid = await callPaid(args);
   } catch (e) {
+    if (e instanceof SetupRequiredError) {
+      process.stderr.write(`${e.message}\n`);
+      process.exit(2);
+    }
     // x402-fetch throws when the wallet can't sign (e.g. zero balance + no allowance).
     process.stderr.write(`payment error: ${e.message}\n`);
-    const { account } = getWalletClient();
-    const bal = await usdcBalance(account.address);
-    process.stderr.write(`\nWallet ${account.address} has ${bal ?? "?"} USDC on ${NETWORK}.\n`);
-    process.stderr.write(`Fund it: ${PROXY_URL}/fund?addr=${account.address}&amount=5\n`);
+    try {
+      const account = await getAccount();
+      const bal = await usdcBalance(account.address);
+      process.stderr.write(`\nWallet ${account.address} has ${bal ?? "?"} USDC on ${NETWORK}.\n`);
+      process.stderr.write(`Fund it: ${PROXY_URL}/fund?addr=${account.address}&amount=5\n`);
+    } catch {}
     process.exit(402);
   }
   if (paid.status === 200) {
@@ -80,7 +94,10 @@ async function main() {
   }
   if (paid.status === 402) {
     const bal = await usdcBalance(paid.address);
-    process.stderr.write(`HTTP 402 — payment required.\nWallet ${paid.address} has ${bal ?? "?"} USDC.\nFund: ${PROXY_URL}/fund?addr=${paid.address}&amount=5\n`);
+    process.stderr.write(
+      `HTTP 402 — payment required.\nWallet ${paid.address} has ${bal ?? "?"} USDC.\n` +
+      `Fund: ${PROXY_URL}/fund?addr=${paid.address}&amount=5\n`,
+    );
     process.exit(402);
   }
   process.stderr.write(`HTTP ${paid.status}: ${paid.text}\n`);
