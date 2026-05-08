@@ -1,6 +1,6 @@
 ---
 name: agent-marketplace
-description: Search the live web (Google SERP) via x402 micropayments. Use this when you need fresh information from the web — news, current events, prices, docs, anything beyond the model's training cutoff. First 5 calls/day are free; after that $0.001 USDC per call paid from a Coinbase-managed wallet (private key stays in Coinbase's enclave, never on disk).
+description: Search the live web (Google SERP) via x402 micropayments. Use this when you need fresh information from the web — news, current events, prices, docs, anything beyond the model's training cutoff. First 5 calls/day are free; after that $0.001 USDC per call, paid from a scoped spender wallet authorized once via the user's Base Account passkey (no signup, no API key, no private key on disk for the master wallet).
 ---
 
 You are an agent with access to a paid web-search backend (`agent-marketplace-proxy`). Use this skill when the user asks something that requires fresh web data.
@@ -26,27 +26,31 @@ Output: JSON with top-N organic Google results (`{rank, title, url, snippet}[]`)
 
 Pricing flow:
 - First 5 calls per UTC day per IP → free (no wallet needed)
-- After that → $0.001 USDC per call, signed by the user's CDP-managed wallet
+- After that → $0.001 USDC per call, signed by the local spender key authorized via Base Account
 - If wallet is empty, script prints fund instructions and exits with status 402
-- If CDP wallet hasn't been set up yet, exits with status 2 and points to `setup.mjs`
+- If wallet hasn't been set up yet, exits with status 2 and points to `setup.mjs`
 
-### 2. `setup.mjs` — one-time CDP wallet registration
+### 2. `setup.mjs` — one-time wallet authorization (~30 sec)
 
 ```bash
 node ${CLAUDE_SKILL_DIR}/bin/setup.mjs
 ```
 
-Interactive ~90 second walkthrough: opens https://portal.cdp.coinbase.com/projects/api-keys, asks the user to create a CDP API key + Wallet Secret, then creates a server-side EVM wallet under their CDP project. Saves credentials to `~/.agent-marketplace/config.json` (chmod 600). **No private key is ever written to disk** — the key lives in Coinbase's enclave.
+Starts a one-shot localhost listener and opens a hosted setup page in the user's browser. The page:
+1. Generates a fresh "spender" EOA (private key never leaves the browser tab).
+2. Asks the user to **Connect Base Account** → passkey login (Touch ID / Face ID).
+3. Asks the user to **Authorize $20 / 30 days** → another passkey signature grants a [SpendPermission](https://docs.base.org/identity/smart-wallet/guides/spend-permissions) scoped to this app's revenue address. Coinbase's Base paymaster sponsors the gas.
+4. POSTs the spender private key + permission back to the localhost listener. Saved at `~/.agent-marketplace/session.json` (chmod 600). The Base Account master key never leaves the user's device.
 
-Headless / CI alternative: set `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`, `CDP_WALLET_SECRET` env vars instead of running setup.
+Headless / CI alternative: set `AGENT_MARKETPLACE_SPENDER_KEY=0x<32-byte hex>` and skip setup.
 
-### 3. `wallet-info.mjs` — wallet status + funding
+### 3. `wallet-info.mjs` — wallet status + funding + revoke link
 
 ```bash
 node ${CLAUDE_SKILL_DIR}/bin/wallet-info.mjs
 ```
 
-Prints the buyer wallet address (assigned by CDP), current USDC balance on Base, and a fund URL the user can click to top up via Apple Pay (Coinbase Onramp guest checkout, no ID for first $500). Run this once before the user's first paid search.
+Prints the spender address, the Base Account that authorized it, current USDC balance on Base, a fund URL (Apple Pay, no ID for first $500), and a dashboard URL where the user can revoke the spend permission anytime. Run this once before the user's first paid search.
 
 ### 4. `fund.mjs` — open the fund page in browser
 
@@ -61,7 +65,7 @@ Opens `https://agent-marketplace-proxy.vercel.app/fund?addr=...&amount=5` in the
 1. User asks a question that needs fresh data → call `search.mjs --q "..."`
 2. Parse JSON output, cite top results in your reply (link + snippet)
 3. If `search.mjs` exits with status `2` (setup required):
-   - Tell the user: "Run `node ${CLAUDE_SKILL_DIR}/bin/setup.mjs` once to register a Coinbase-managed wallet (~90 sec). Free tier still works without it."
+   - Tell the user: "Run `node ${CLAUDE_SKILL_DIR}/bin/setup.mjs` once to authorize a scoped spender via your Base Account (~30 sec; passkey + spend approval). Free tier still works without it."
 4. If `search.mjs` exits with status `402` (wallet empty):
    - Run `wallet-info.mjs` to show address + balance
    - Tell user "your search wallet is empty — run `node ${CLAUDE_SKILL_DIR}/bin/fund.mjs` to add $5 with Apple Pay (covers ~5000 searches)"
@@ -69,11 +73,11 @@ Opens `https://agent-marketplace-proxy.vercel.app/fund?addr=...&amount=5` in the
 
 ## Wallet model
 
-The wallet is **CDP-managed** — Coinbase's enclave holds the private key, the user holds the API credentials that authorize signing, and the skill never touches the key. This eliminates the historical EOA-on-disk risk where a leaked private-key file could drain the wallet.
+The user's master wallet is a **Base Account (Coinbase Smart Wallet)** — passkey-bound smart contract, master key in the device's secure enclave, never on disk. The user authorizes a scoped **spender** EOA via a SpendPermission: at most $20 USDC over 30 days, scoped to this app's revenue address. The local file at `~/.agent-marketplace/session.json` (chmod 600) holds only the spender key, not the master key.
 
-The local config file at `~/.agent-marketplace/config.json` (chmod 600) holds only the CDP API key + Wallet Secret, not any signing key. The wallet itself is identified by an address assigned by CDP at setup time.
+Even if the session file leaks, the attacker can drain at most the remaining allowance before it recharges, and only to the predefined recipient. The user can revoke instantly via the dashboard URL printed by `wallet-info.mjs`.
 
-Still a hot wallet — keep balance small ($1–$10). Real funds live in the user's main wallet, not here.
+The spender wallet only ever holds USDC; no ETH required (x402's facilitator submits the on-chain transactions and pays gas itself).
 
 ## Configuration
 
@@ -82,7 +86,7 @@ All optional, sensible defaults work out of the box:
 - `AGENT_MARKETPLACE_URL` — proxy URL (default: `https://agent-marketplace-proxy.vercel.app`)
 - `X402_NETWORK` — `base` (default) or `base-sepolia` (free testnet USDC for dev)
 - `AGENT_MARKETPLACE_CONFIG_DIR` — config storage (default: `~/.agent-marketplace`)
-- `CDP_API_KEY_ID` / `CDP_API_KEY_SECRET` / `CDP_WALLET_SECRET` — override config file (headless mode)
+- `AGENT_MARKETPLACE_SPENDER_KEY` — `0x`-prefixed 32-byte hex; bypasses setup (headless mode)
 
 ## Costs
 
@@ -92,4 +96,4 @@ All optional, sensible defaults work out of the box:
 
 ## How it works (one paragraph)
 
-`search.mjs` POSTs to `https://agent-marketplace-proxy.vercel.app/search`. The proxy returns HTTP 402 with x402 payment requirements; `x402-fetch` calls into the CDP SDK to sign an EIP-3009 USDC `transferWithAuthorization` (off-chain — Coinbase's facilitator submits on-chain), retries with the signed payload, and gets the SERP JSON back. Total roundtrip ~2s. Signing happens inside Coinbase's MPC enclave; the skill never sees the private key. The wallet only ever holds USDC; no ETH required.
+`search.mjs` POSTs to `https://agent-marketplace-proxy.vercel.app/search`. The proxy returns HTTP 402 with x402 payment requirements; `x402-fetch` signs an EIP-3009 USDC `transferWithAuthorization` with the local spender key, retries with the signed payload, and gets the SERP JSON back. The Coinbase facilitator submits on-chain (it pays the gas, not the user), and the spender's USDC balance ticks down by $0.001. Total roundtrip ~2s. The Base Account passkey never leaves the user's device — the spender is scoped + revocable + auto-expires after 30 days.

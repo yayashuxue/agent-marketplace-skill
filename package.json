@@ -1,7 +1,7 @@
 {
   "name": "agent-marketplace-skill",
-  "version": "1.0.0",
-  "description": "Claude/Anthropic Skill: paid Google SERP via x402 micropayments. CDP-managed wallet — Coinbase enclave holds the key, never on disk. $0.001 USDC/call.",
+  "version": "2.0.0",
+  "description": "Claude/Anthropic Skill: paid Google SERP via x402 micropayments. Base Account + Spend Permission — passkey-bound wallet, no signup. $0.001 USDC/call.",
   "type": "module",
   "bin": {
     "agent-marketplace-setup": "bin/setup.mjs",
@@ -19,7 +19,6 @@
     "test": "node bin/wallet-info.mjs"
   },
   "dependencies": {
-    "@coinbase/cdp-sdk": "^1.48.2",
     "viem": "^2.48.6",
     "x402-fetch": "^1.2.0"
   },
@@ -38,7 +37,10 @@
     "search",
     "serp",
     "agent",
-    "micropayments"
+    "micropayments",
+    "base",
+    "smart-wallet",
+    "spend-permission"
   ],
   "license": "MIT"
 }

@@ -41,7 +41,7 @@ async function callFree({ q, location, num }) {
 }
 
 async function callPaid({ q, location, num }) {
-  const { client, account } = await getWalletClient();
+  const { client, account } = getWalletClient();
   const fetchWithPay = wrapFetchWithPayment(fetch, client);
   const r = await fetchWithPay(`${PROXY_URL}/search`, {
     method: "POST",
@@ -81,7 +81,7 @@ async function main() {
     // x402-fetch throws when the wallet can't sign (e.g. zero balance + no allowance).
     process.stderr.write(`payment error: ${e.message}\n`);
     try {
-      const account = await getAccount();
+      const account = getAccount();
       const bal = await usdcBalance(account.address);
       process.stderr.write(`\nWallet ${account.address} has ${bal ?? "?"} USDC on ${NETWORK}.\n`);
       process.stderr.write(`Fund it: ${PROXY_URL}/fund?addr=${account.address}&amount=5\n`);

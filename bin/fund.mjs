@@ -3,7 +3,7 @@
 
 import { spawn } from "node:child_process";
 import { platform } from "node:os";
-import { PROXY_URL, getAccount, SetupRequiredError } from "./_wallet.mjs";
+import { PROXY_URL, readSession, SetupRequiredError } from "./_wallet.mjs";
 
 function parseAmount(argv) {
   const i = argv.indexOf("--amount");
@@ -11,21 +11,18 @@ function parseAmount(argv) {
   return "5";
 }
 
-let account;
-try {
-  account = await getAccount();
-} catch (e) {
-  if (e instanceof SetupRequiredError) {
-    process.stderr.write(`${e.message}\n`);
-    process.exit(2);
-  }
-  throw e;
+const session = readSession();
+if (!session?.spenderAddress) {
+  process.stderr.write(
+    new SetupRequiredError("No session found. Run `node bin/setup.mjs` to authorize a spender via your Base Account.").message + "\n",
+  );
+  process.exit(2);
 }
 
 const amount = parseAmount(process.argv.slice(2));
-const url = `${PROXY_URL}/fund?addr=${account.address}&amount=${amount}`;
+const url = `${PROXY_URL}/fund?addr=${session.spenderAddress}&amount=${amount}`;
 
-process.stdout.write(`Opening fund page for ${account.address} ($${amount} USDC):\n  ${url}\n`);
+process.stdout.write(`Opening fund page for spender ${session.spenderAddress} ($${amount} USDC):\n  ${url}\n`);
 
 const opener = platform() === "darwin" ? "open" : platform() === "win32" ? "start" : "xdg-open";
 const child = spawn(opener, [url], { stdio: "ignore", detached: true });

@@ -1,32 +1,29 @@
-// Shared wallet bootstrap — CDP-managed (Coinbase enclave holds the key, not us, not the user).
+// Shared wallet bootstrap — Base Account + Spend Permission (v2, no CDP signup).
 //
-// The user runs `setup.mjs` once to register a CDP API key + create a server-side wallet.
-// After that, every search signs through the CDP API; no privkey ever lives on the user's disk.
+// One-time `setup.mjs` opens a hosted browser flow that:
+//   - generates a fresh "spender" EOA in the browser (privkey never leaves the tab),
+//   - prompts the user to connect their Base Account (Coinbase Smart Wallet) with passkey,
+//   - grants a SpendPermission scoped to USDC, $20 / 30 days, on this app's revenue address,
+//   - POSTs the spender privkey + permission to a one-shot localhost listener.
 //
-// Config layout: ~/.agent-marketplace/config.json (chmod 600), shared with agent-marketplace-mcp.
-//   {
-//     "cdpApiKeyId": "organizations/.../apiKeys/...",
-//     "cdpApiKeySecret": "<PEM or base64 Ed25519>",
-//     "cdpWalletSecret": "<wallet secret>",
-//     "accountName": "agent-marketplace-buyer",
-//     "address": "0x..."   // cached CDP wallet address
-//   }
+// We persist to ~/.agent-marketplace/session.json (chmod 600). Searches sign x402 EIP-3009
+// transferWithAuthorization with the spender key — the facilitator submits on-chain, so the
+// spender wallet never needs ETH for gas. User retains control via the hosted dashboard.
 //
-// Env vars (advanced / headless): CDP_API_KEY_ID / CDP_API_KEY_SECRET / CDP_WALLET_SECRET take
-// precedence over the config file, so CI can pin creds without touching the home dir.
+// Env vars (advanced / headless): AGENT_MARKETPLACE_SPENDER_KEY takes precedence over the
+// session file, so CI can pin a 0x-prefixed 32-byte hex without touching the home dir.
 
 import { readFileSync, existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { createWalletClient, createPublicClient, http, formatUnits } from "viem";
-import { toAccount } from "viem/accounts";
+import { createWalletClient, createPublicClient, http, formatUnits, isHex } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 import { base, baseSepolia } from "viem/chains";
 
 export const PROXY_URL = process.env.AGENT_MARKETPLACE_URL || "https://agent-marketplace-proxy.vercel.app";
 export const NETWORK = process.env.X402_NETWORK || "base";
 export const CONFIG_DIR = process.env.AGENT_MARKETPLACE_CONFIG_DIR || join(homedir(), ".agent-marketplace");
-export const CONFIG_FILE = join(CONFIG_DIR, "config.json");
-export const DEFAULT_ACCOUNT_NAME = "agent-marketplace-buyer";
+export const SESSION_FILE = join(CONFIG_DIR, "session.json");
 
 const USDC = {
   base: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
@@ -45,77 +42,43 @@ class SetupRequiredError extends Error {
   }
 }
 
-export function readConfig() {
-  if (!existsSync(CONFIG_FILE)) return null;
+export function readSession() {
+  if (!existsSync(SESSION_FILE)) return null;
   // chmod 600 sanity — warn (don't fail) if the user widened it.
   try {
-    const mode = statSync(CONFIG_FILE).mode & 0o777;
+    const mode = statSync(SESSION_FILE).mode & 0o777;
     if (mode !== 0o600) {
-      process.stderr.write(`warn: ${CONFIG_FILE} mode is ${mode.toString(8)}, expected 600.\n`);
+      process.stderr.write(`warn: ${SESSION_FILE} mode is ${mode.toString(8)}, expected 600.\n`);
     }
   } catch {}
-  return JSON.parse(readFileSync(CONFIG_FILE, "utf8"));
+  return JSON.parse(readFileSync(SESSION_FILE, "utf8"));
 }
 
-function resolveCreds() {
-  const fromEnv = {
-    cdpApiKeyId: process.env.CDP_API_KEY_ID,
-    cdpApiKeySecret: process.env.CDP_API_KEY_SECRET,
-    cdpWalletSecret: process.env.CDP_WALLET_SECRET,
-  };
-  const fromFile = readConfig() || {};
-  const creds = {
-    cdpApiKeyId: fromEnv.cdpApiKeyId || fromFile.cdpApiKeyId,
-    cdpApiKeySecret: fromEnv.cdpApiKeySecret || fromFile.cdpApiKeySecret,
-    cdpWalletSecret: fromEnv.cdpWalletSecret || fromFile.cdpWalletSecret,
-    accountName: fromFile.accountName || DEFAULT_ACCOUNT_NAME,
-    cachedAddress: fromFile.address,
-  };
-  if (!creds.cdpApiKeyId || !creds.cdpApiKeySecret || !creds.cdpWalletSecret) {
-    throw new SetupRequiredError(
-      `Wallet not configured. Run \`node ${join(import.meta.dirname || "", "setup.mjs")}\` to register a CDP API key, ` +
-      `or set CDP_API_KEY_ID + CDP_API_KEY_SECRET + CDP_WALLET_SECRET env vars (headless mode).`,
-    );
-  }
-  return creds;
-}
-
-let _cdp = null;
 let _account = null;
 let _walletClient = null;
 
-export async function getCdpClient() {
-  if (_cdp) return _cdp;
-  const creds = resolveCreds();
-  const { CdpClient } = await import("@coinbase/cdp-sdk");
-  _cdp = new CdpClient({
-    apiKeyId: creds.cdpApiKeyId,
-    apiKeySecret: creds.cdpApiKeySecret,
-    walletSecret: creds.cdpWalletSecret,
-  });
-  return _cdp;
+function resolvePrivKey() {
+  const envKey = process.env.AGENT_MARKETPLACE_SPENDER_KEY;
+  const session = readSession();
+  const privKey = envKey || session?.spenderPrivKey;
+  if (!privKey || !isHex(privKey) || privKey.length !== 66) {
+    throw new SetupRequiredError(
+      `Wallet not configured. Run \`node ${join(import.meta.dirname || "", "setup.mjs")}\` to authorize a spender via your Base Account, ` +
+      `or set AGENT_MARKETPLACE_SPENDER_KEY env var (headless mode).`,
+    );
+  }
+  return privKey;
 }
 
-export async function getAccount() {
+export function getAccount() {
   if (_account) return _account;
-  const creds = resolveCreds();
-  const cdp = await getCdpClient();
-  // getOrCreateAccount is idempotent — same name returns the existing account.
-  const cdpAccount = await cdp.evm.getOrCreateAccount({ name: creds.accountName });
-  // Wrap as a viem-compatible account for createWalletClient / x402-fetch.
-  _account = toAccount({
-    address: cdpAccount.address,
-    sign: cdpAccount.sign,
-    signMessage: cdpAccount.signMessage,
-    signTransaction: cdpAccount.signTransaction,
-    signTypedData: cdpAccount.signTypedData,
-  });
+  _account = privateKeyToAccount(resolvePrivKey());
   return _account;
 }
 
-export async function getWalletClient() {
+export function getWalletClient() {
   if (_walletClient) return { client: _walletClient, account: _account };
-  const account = await getAccount();
+  const account = getAccount();
   _walletClient = createWalletClient({ account, chain: chain(), transport: http() });
   return { client: _walletClient, account };
 }
