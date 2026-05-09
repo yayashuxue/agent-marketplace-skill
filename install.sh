@@ -40,6 +40,19 @@ echo "→ Installing dependencies"
 echo ""
 echo "✓ Installed."
 echo ""
+
+# v0.1 residue: warn if a legacy wallet.json (CDP-managed EOA) is still on disk.
+# v2 ignores it, but `wallet-info.mjs` from a leftover v0.1 install would still
+# print that EOA as the fund destination — leading users to fund a wallet that
+# the v2 spender path can't sign for. Tell the user once so they don't loop.
+LEGACY_WALLET="${HOME}/.agent-marketplace/wallet.json"
+if [ -f "${LEGACY_WALLET}" ]; then
+  echo "ℹ v0.1 wallet detected at ${LEGACY_WALLET}"
+  echo "  v2 ignores it. If you funded that address by mistake, sweep it before"
+  echo "  funding the new spender (see ${SKILL_DIR}/README.md for recovery steps)."
+  echo ""
+fi
+
 echo "Free tier (5 calls/day, no wallet) works immediately. To enable unlimited"
 echo "paid search, authorize a scoped spender via your Base Account (~30 sec):"
 echo ""

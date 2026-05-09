@@ -3,11 +3,10 @@
 // Usage: node search.mjs --q "query" [--num 10] [--location "United States"] [--free]
 // Free tier (5/IP/day) is tried first; paid path requires `setup.mjs` to have configured CDP.
 
-import { wrapFetchWithPayment } from "x402-fetch";
 import {
   PROXY_URL,
   NETWORK,
-  getWalletClient,
+  getFetchWithPayment,
   getAccount,
   usdcBalance,
   SetupRequiredError,
@@ -41,8 +40,7 @@ async function callFree({ q, location, num }) {
 }
 
 async function callPaid({ q, location, num }) {
-  const { client, account } = getWalletClient();
-  const fetchWithPay = wrapFetchWithPayment(fetch, client);
+  const { fetchWithPay, account } = getFetchWithPayment();
   const r = await fetchWithPay(`${PROXY_URL}/search`, {
     method: "POST",
     headers: { "content-type": "application/json" },

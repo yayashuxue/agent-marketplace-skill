@@ -16,9 +16,11 @@
 import { readFileSync, existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { createWalletClient, createPublicClient, http, formatUnits, isHex } from "viem";
+import { createPublicClient, http, formatUnits, isHex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base, baseSepolia } from "viem/chains";
+import { wrapFetchWithPaymentFromConfig } from "@x402/fetch";
+import { ExactEvmScheme } from "@x402/evm/exact/client";
 
 export const PROXY_URL = process.env.AGENT_MARKETPLACE_URL || "https://agent-marketplace-proxy.vercel.app";
 export const NETWORK = process.env.X402_NETWORK || "base";
@@ -32,6 +34,10 @@ const USDC = {
 
 export function chain() {
   return NETWORK === "base-sepolia" ? baseSepolia : base;
+}
+
+export function caip2Network() {
+  return NETWORK === "base-sepolia" ? "eip155:84532" : "eip155:8453";
 }
 
 class SetupRequiredError extends Error {
@@ -55,7 +61,7 @@ export function readSession() {
 }
 
 let _account = null;
-let _walletClient = null;
+let _fetchWithPay = null;
 
 function resolvePrivKey() {
   const envKey = process.env.AGENT_MARKETPLACE_SPENDER_KEY;
@@ -76,11 +82,13 @@ export function getAccount() {
   return _account;
 }
 
-export function getWalletClient() {
-  if (_walletClient) return { client: _walletClient, account: _account };
+export function getFetchWithPayment() {
+  if (_fetchWithPay) return { fetchWithPay: _fetchWithPay, account: _account };
   const account = getAccount();
-  _walletClient = createWalletClient({ account, chain: chain(), transport: http() });
-  return { client: _walletClient, account };
+  _fetchWithPay = wrapFetchWithPaymentFromConfig(fetch, {
+    schemes: [{ network: caip2Network(), client: new ExactEvmScheme(account) }],
+  });
+  return { fetchWithPay: _fetchWithPay, account };
 }
 
 export async function usdcBalance(address) {

@@ -1,14 +1,29 @@
 #!/usr/bin/env node
 // wallet-info.mjs — print spender wallet, Base Account, balance, fund + dashboard URLs.
 
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import {
   PROXY_URL,
   NETWORK,
+  CONFIG_DIR,
   SESSION_FILE,
   readSession,
   usdcBalance,
   SetupRequiredError,
 } from "./_wallet.mjs";
+
+// v0.1 residue check: a leftover wallet.json (from the CDP-managed-EOA era) is
+// silently ignored by v2, but if a stale v0.1 install on the same machine is
+// still printing that EOA as the fund target, the user can lose money funding a
+// wallet the v2 spender path can't sign for. Surface the conflict once.
+const LEGACY_WALLET = join(CONFIG_DIR, "wallet.json");
+if (existsSync(LEGACY_WALLET)) {
+  process.stderr.write(
+    `warn: legacy v0.1 wallet detected at ${LEGACY_WALLET} — v2 ignores it.\n` +
+    `      If you funded that address by mistake, sweep it before using the v2 spender below.\n\n`,
+  );
+}
 
 const session = readSession();
 if (!session?.spenderAddress) {
