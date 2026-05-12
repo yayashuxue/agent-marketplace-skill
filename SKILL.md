@@ -14,7 +14,7 @@ You are an agent with access to a paid web-search backend (`agent-marketplace-pr
 
 ## Commands
 
-The skill ships four scripts under `${CLAUDE_SKILL_DIR}/bin/`. Run them with `node`:
+The skill ships five scripts under `${CLAUDE_SKILL_DIR}/bin/`. Run them with `node`:
 
 ### 1. `search.mjs` — main search command
 
@@ -60,6 +60,16 @@ node ${CLAUDE_SKILL_DIR}/bin/fund.mjs [--amount 5]
 
 Opens `https://agent-marketplace-proxy.vercel.app/fund?addr=...&amount=5` in the user's default browser. Use this when the user explicitly asks "how do I add money".
 
+### 5. `pull.mjs` — pull USDC from Base Account → spender via SpendPermission
+
+```bash
+node ${CLAUDE_SKILL_DIR}/bin/pull.mjs [--amount 5] [--dry-run]
+```
+
+If the user already has USDC on their Base Account (the Smart Wallet that authorized the spender) but the spender itself is at 0 USDC, run this instead of `fund.mjs`. It calls `SpendPermissionManager.spend(...)` on-chain, which pulls USDC from the owner Smart Wallet to the spender — the design intent of SpendPermission.
+
+Caveat (until upstream paymaster support lands): the spender pays gas, so it needs a small ETH balance (~$0.50 covers many pulls). The script prints a clear message and exits 3 if ETH is zero. `--dry-run` shows the planned call sequence without signing.
+
 ## Workflow
 
 1. User asks a question that needs fresh data → call `search.mjs --q "..."`
@@ -77,7 +87,7 @@ The user's master wallet is a **Base Account (Coinbase Smart Wallet)** — passk
 
 Even if the session file leaks, the attacker can drain at most the remaining allowance before it recharges, and only to the predefined recipient. The user can revoke instantly via the dashboard URL printed by `wallet-info.mjs`.
 
-The spender wallet only ever holds USDC; no ETH required (x402's facilitator submits the on-chain transactions and pays gas itself).
+For `search.mjs` the spender only ever holds USDC; no ETH required — the x402 facilitator submits the on-chain transactions and pays gas itself. The optional `pull.mjs` path (which moves USDC from the user's Base Account to the spender via `SpendPermissionManager.spend`) is the only flow that asks the spender to hold a small amount of ETH, until upstream paymaster support lands.
 
 ## Configuration
 

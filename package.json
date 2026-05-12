@@ -1,13 +1,14 @@
 {
   "name": "agent-marketplace-skill",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "description": "Claude/Anthropic Skill: paid Google SERP via x402 micropayments. Base Account + Spend Permission — passkey-bound wallet, no signup. $0.001 USDC/call.",
   "type": "module",
   "bin": {
     "agent-marketplace-setup": "bin/setup.mjs",
     "agent-marketplace-search": "bin/search.mjs",
     "agent-marketplace-wallet": "bin/wallet-info.mjs",
-    "agent-marketplace-fund": "bin/fund.mjs"
+    "agent-marketplace-fund": "bin/fund.mjs",
+    "agent-marketplace-pull": "bin/pull.mjs"
   },
   "files": [
     "SKILL.md",
@@ -19,6 +20,7 @@
     "test": "node bin/wallet-info.mjs"
   },
   "dependencies": {
+    "@base-org/account": "^2.5.5",
     "@x402/evm": "^2.11.0",
     "@x402/fetch": "^2.11.0",
     "viem": "^2.48.6"
