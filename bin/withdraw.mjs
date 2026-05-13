@@ -91,12 +91,17 @@ async function main() {
   const usdcAddr = USDC_BY_NETWORK[NETWORK] || USDC_BY_NETWORK.base;
   const pub = createPublicClient({ chain: chain(), transport: http() });
 
-  const balance = await pub.readContract({
-    address: usdcAddr,
-    abi: ERC20_ABI,
-    functionName: "balanceOf",
-    args: [spender.address],
-  });
+  // Read USDC balance + ETH balance in parallel — independent reads, halves the RPC latency.
+  const [balance, ethBalance] = await Promise.all([
+    pub.readContract({
+      address: usdcAddr,
+      abi: ERC20_ABI,
+      functionName: "balanceOf",
+      args: [spender.address],
+    }),
+    pub.getBalance({ address: spender.address }),
+  ]);
+
   if (balance === 0n) {
     process.stderr.write(
       `Spender ${spender.address} has 0 USDC — nothing to withdraw.\n` +
@@ -116,8 +121,6 @@ async function main() {
     );
     process.exit(2);
   }
-
-  const ethBalance = await pub.getBalance({ address: spender.address });
 
   process.stdout.write(
     `Withdraw plan\n` +
