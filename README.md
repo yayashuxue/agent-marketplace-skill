@@ -55,12 +55,18 @@ Config lives at `~/.agent-marketplace/session.json` (chmod 600) — only the sco
 
 ## Commands the skill exposes
 
+Once installed, every command is reachable both as `node bin/<name>.mjs` and as
+`agent-marketplace <subcommand>` (or `npx agent-marketplace <subcommand>` without a local
+install):
+
 | Command | What it does |
 |---|---|
-| `node bin/setup.mjs` | One-time spender authorization via Base Account passkey (~30 sec) |
-| `node bin/search.mjs --q "query"` | Run a SERP query (free or paid) |
-| `node bin/wallet-info.mjs` | Print spender + Base Account + USDC balance + fund + dashboard URLs |
-| `node bin/fund.mjs [--amount 5]` | Open the fund page (Apple Pay) in your browser |
+| `agent-marketplace setup` | One-time spender authorization via Base Account passkey (~30 sec) |
+| `agent-marketplace search --q "query"` | Run a SERP query (free or paid) |
+| `agent-marketplace wallet` | Print spender + Base Account + USDC balance + fund + dashboard URLs |
+| `agent-marketplace fund [--amount 5]` | Open the fund page (Apple Pay) in your browser |
+| `agent-marketplace pull [--amount 5]` | Pull USDC from Base Account → spender (SpendPermission) |
+| `agent-marketplace withdraw [--amount <USDC>]` | Pull USDC from spender → Base Account (the escape hatch) |
 
 The skill instructs Claude to call these for you — you don't normally invoke them by hand.
 
