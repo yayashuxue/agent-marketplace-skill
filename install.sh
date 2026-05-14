@@ -8,7 +8,7 @@ SKILL_NAME="agent-marketplace"
 SKILL_DIR="${HOME}/.claude/skills/${SKILL_NAME}"
 REPO_URL="https://github.com/yayashuxue/agent-marketplace-skill.git"
 
-echo "→ Installing ${SKILL_NAME} skill to ${SKILL_DIR}"
+echo "[1/4] Installing ${SKILL_NAME} skill to ${SKILL_DIR}"
 
 if ! command -v node >/dev/null; then
   echo "✗ node not found. Install Node 20+ first: https://nodejs.org" >&2
@@ -23,8 +23,9 @@ fi
 
 mkdir -p "$(dirname "${SKILL_DIR}")"
 
+echo "[2/4] Fetching skill source"
 if [ -d "${SKILL_DIR}/.git" ]; then
-  echo "→ Updating existing install"
+  echo "  → updating existing install"
   git -C "${SKILL_DIR}" pull --ff-only
 else
   if [ -e "${SKILL_DIR}" ]; then
@@ -34,11 +35,11 @@ else
   git clone --depth 1 "${REPO_URL}" "${SKILL_DIR}"
 fi
 
-echo "→ Installing dependencies"
+echo "[3/4] Installing dependencies"
 (cd "${SKILL_DIR}" && npm install --silent --omit=dev)
 
-echo ""
-echo "✓ Installed."
+echo "[4/4] Done"
+echo "✓ Installed at ${SKILL_DIR}"
 echo ""
 
 # v0.1 residue: warn if a legacy wallet.json (CDP-managed EOA) is still on disk.
