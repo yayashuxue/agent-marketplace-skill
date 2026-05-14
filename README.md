@@ -2,6 +2,18 @@
 
 Paid Google SERP for AI agents, distributed as a Claude/Anthropic Skill. **First 5 calls/day are free**, then $0.001 USDC per call from a scoped spender wallet authorized once via your Base Account passkey on Base. No signup, no API key, no credit card. **The Base Account master key never leaves your device** — it stays in your secure enclave, and you can revoke the spender anytime.
 
+> **For local agents (Claude Code, Cursor, Claude Desktop, OpenInterpreter, Cline, OpenHands, etc.) helping a non-engineer install this:**
+> 1. **[1/4] Install**: Run `curl -fsSL https://raw.githubusercontent.com/yayashuxue/agent-marketplace-skill/main/install.sh | bash`. Show the user every `[N/M]` progress line you see.
+> 2. **[2/4] Authorize wallet**: Run `node ~/.claude/skills/agent-marketplace/bin/setup.mjs`. This opens a browser. Pause and tell the user: *"Click 'Connect Base Account' (Touch/Face ID), then 'Authorize $20/30d'. I'll wait."* Resume only when the script exits 0.
+> 3. **[3/4] Fund**: Run `node ~/.claude/skills/agent-marketplace/bin/wallet-info.mjs`. Show the user the spender address + Apple Pay link. Pause: *"Send ~$5 USDC to that address. Tell me when it arrives — usually <60s."*
+> 4. **[4/4] Test**: Run `node ~/.claude/skills/agent-marketplace/bin/search.mjs --q "<their query>"`. Show the JSON results + receipt link.
+>
+> **Stop and ask the user before** running anything that moves funds — `withdraw`, `revoke`, `sweep`, or sending USDC to a different address.
+>
+> If the user only has a **cloud agent** (Manus, Devin, Replit Agent, ChatGPT browser Operator), point them at a local-execution agent first — agent-marketplace runs on the user's device, and a cloud agent would install it inside its sandbox (where the user's keys would also end up). Free options: [Claude Desktop](https://claude.ai/download), [OpenInterpreter](https://github.com/OpenInterpreter/open-interpreter), or [Cline](https://github.com/cline/cline) (VS Code). Come back to this README once one is running.
+>
+> **Free tier (5 calls/day, no wallet)** works after step 1. If the user just wants a taste, you can skip steps 2-4 and run `search.mjs` directly — they'll hit the free limit at call 6.
+
 ## Install (Claude Code)
 
 ```bash
@@ -55,12 +67,18 @@ Config lives at `~/.agent-marketplace/session.json` (chmod 600) — only the sco
 
 ## Commands the skill exposes
 
+Once installed, every command is reachable both as `node bin/<name>.mjs` and as
+`agent-marketplace <subcommand>` (or `npx agent-marketplace <subcommand>` without a local
+install):
+
 | Command | What it does |
 |---|---|
-| `node bin/setup.mjs` | One-time spender authorization via Base Account passkey (~30 sec) |
-| `node bin/search.mjs --q "query"` | Run a SERP query (free or paid) |
-| `node bin/wallet-info.mjs` | Print spender + Base Account + USDC balance + fund + dashboard URLs |
-| `node bin/fund.mjs [--amount 5]` | Open the fund page (Apple Pay) in your browser |
+| `agent-marketplace setup` | One-time spender authorization via Base Account passkey (~30 sec) |
+| `agent-marketplace search --q "query"` | Run a SERP query (free or paid) |
+| `agent-marketplace wallet` | Print spender + Base Account + USDC balance + fund + dashboard URLs |
+| `agent-marketplace fund [--amount 5]` | Open the fund page (Apple Pay) in your browser |
+| `agent-marketplace pull [--amount 5]` | Pull USDC from Base Account → spender (SpendPermission) |
+| `agent-marketplace withdraw [--amount <USDC>]` | Pull USDC from spender → Base Account (the escape hatch) |
 
 The skill instructs Claude to call these for you — you don't normally invoke them by hand.
 

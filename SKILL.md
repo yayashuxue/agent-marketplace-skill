@@ -14,7 +14,12 @@ You are an agent with access to a paid web-search backend (`agent-marketplace-pr
 
 ## Commands
 
-The skill ships five scripts under `${CLAUDE_SKILL_DIR}/bin/`. Run them with `node`:
+Once installed via `install.sh` or `npx agent-marketplace`, every command is also reachable
+as `agent-marketplace <subcommand>` (or `npx agent-marketplace <subcommand>` without an
+install). The per-command scripts under `${CLAUDE_SKILL_DIR}/bin/` are kept as
+backward-compatible aliases.
+
+The skill ships six scripts under `${CLAUDE_SKILL_DIR}/bin/`. Run them with `node`:
 
 ### 1. `search.mjs` — main search command
 
@@ -69,6 +74,27 @@ node ${CLAUDE_SKILL_DIR}/bin/pull.mjs [--amount 5] [--dry-run]
 If the user already has USDC on their Base Account (the Smart Wallet that authorized the spender) but the spender itself is at 0 USDC, run this instead of `fund.mjs`. It calls `SpendPermissionManager.spend(...)` on-chain, which pulls USDC from the owner Smart Wallet to the spender — the design intent of SpendPermission.
 
 Caveat (until upstream paymaster support lands): the spender pays gas, so it needs a small ETH balance (~$0.50 covers many pulls). The script prints a clear message and exits 3 if ETH is zero. `--dry-run` shows the planned call sequence without signing.
+
+### 6. `withdraw.mjs` — pull USDC from spender → Base Account (inverse of fund/pull)
+
+```bash
+node ${CLAUDE_SKILL_DIR}/bin/withdraw.mjs [--amount <USDC>] [--to 0x…] [--dry-run]
+# or:
+npx agent-marketplace withdraw [--amount <USDC>] [--dry-run]
+```
+
+The escape hatch for the B-bridge model: pulls USDC from the agent's spender EOA back to
+the user's Base Account (the address recorded as `account` in `session.json`). Default
+withdraws the full spender balance; pass `--amount 2.50` to withdraw a specific amount,
+`--to 0x…` to override the destination.
+
+This is CLI-only by design — the spender private key lives in `~/.agent-marketplace/session.json`
+on the user's machine and never enters the browser, so the dashboard "Copy command"
+affordance points here rather than offering a sign-in-the-browser button.
+
+Caveat (v1): the spender pays gas (~$0.02 of ETH on Base) to submit the transfer. The
+script exits 3 with a clear message if the spender has 0 ETH. Gasless withdraw via
+EIP-3009 transferWithAuthorization + facilitator relay is on the roadmap.
 
 ## Workflow
 

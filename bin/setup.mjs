@@ -89,7 +89,7 @@ This authorizes a scoped spender for this skill via your Base Account (Coinbase 
 The spender can spend up to $20 USDC over 30 days, scoped to this app's revenue address.
 Your master Base Account passkey stays in your device's secure enclave — never on disk.
 
-Starting one-shot localhost listener...
+[1/4] Starting one-shot localhost listener...
 `);
 
   const { port, awaitSession } = await startCallback();
@@ -97,8 +97,9 @@ Starting one-shot localhost listener...
   const connectUrl = `${PROXY_URL}/wallet/connect?callback=${encodeURIComponent(callbackUrl)}`;
 
   process.stdout.write(
-    `Opening browser to:\n  ${connectUrl}\n\n` +
-    `(Listening on ${callbackUrl}; will save session to ${SESSION_FILE} when you complete the flow.)\n\n`,
+    `[2/4] Opening browser to:\n  ${connectUrl}\n\n` +
+    `[3/4] Waiting for you to: (a) Connect Base Account (Touch/Face ID), (b) Authorize $20/30d.\n` +
+    `      Listening on ${callbackUrl} — will save to ${SESSION_FILE} when you complete the flow.\n\n`,
   );
   openBrowser(connectUrl);
 
@@ -134,6 +135,7 @@ Starting one-shot localhost listener...
   chmodSync(SESSION_FILE, 0o600);
 
   process.stdout.write(`
+[4/4] Authorized
 ✓ Base Account connected: ${session.account}
 ✓ Spender authorized:     ${session.spenderAddress}
 ✓ Saved to ${SESSION_FILE} (chmod 600)
